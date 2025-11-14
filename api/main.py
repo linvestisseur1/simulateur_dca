@@ -4,7 +4,6 @@ from dca_logic import calcul_dca
 
 app = FastAPI()
 
-# CORS (pour autoriser ton front JS)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -16,7 +15,6 @@ app.add_middleware(
 def home():
     return {"status": "ok", "message": "API DCA opérationnelle 🔥"}
 
-@app.get("/api/dca")
+@app.get("/dca")
 def api_dca(ticker: str, montant: float = 100, start: str = "2000-01-01"):
-    result = calcul_dca(ticker, montant, start)
-    return result
+    return calcul_dca(ticker, montant, start)
