@@ -13,7 +13,7 @@ app.add_middleware(
 
 @app.get("/")
 def home():
-    return {"status": "ok", "message": "API DCA opérationnelle 🔥"}
+    return {"status": "ok"}
 
 @app.get("/dca")
 def api_dca(ticker: str, montant: float = 100, start: str = "2000-01-01"):

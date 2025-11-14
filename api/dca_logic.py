@@ -1,27 +1,29 @@
 import yfinance as yf
+import pandas as pd
 
-def calcul_dca(ticker: str, montant: float, start_date: str):
-    data = yf.download(ticker, start=start_date)
-
+def calcul_dca(ticker: str, montant: float, start: str):
+    data = yf.download(ticker, start=start)
     if data.empty:
-        return {"error": "Ticker introuvable"}
+        return {"error": "ticker introuvable"}
 
-    total_shares = 0
+    data = data["Close"]
+
+    shares = 0
     total_investi = 0
 
-    for date, row in data.iterrows():
-        price = row["Close"]
-        if not price or price <= 0:
-            continue
-        shares = montant / price
-        total_shares += shares
-        total_investi += montant
+    monthly = data.resample("M").first()
 
-    valeur_finale = float(total_shares * data["Close"].iloc[-1])
+    for price in monthly:
+        if pd.isna(price):
+            continue
+        total_investi += montant
+        shares += montant / price
+
+    valeur_finale = shares * data.iloc[-1]
 
     return {
         "ticker": ticker,
-        "invest_total": round(total_investi, 2),
-        "valeur_portefeuille": round(valeur_finale, 2),
-        "variation": round(valeur_finale - total_investi, 2),
+        "total_investi": round(total_investi, 2),
+        "portefeuille": round(valeur_finale, 2),
+        "profit": round(valeur_finale - total_investi, 2)
     }
