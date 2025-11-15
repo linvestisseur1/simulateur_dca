@@ -1,49 +1,76 @@
-import yfinance as yf
-import pandas as pd
+import os
 import requests
+import pandas as pd
 
 
-# --- Forcer des headers pour Render (bypass Cloudflare/Yahoo) ---
-session = requests.Session()
-session.headers.update({
-    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)",
-    "Accept": "application/json,text/plain,*/*"
-})
+RAPIDAPI_KEY = os.getenv("RAPIDAPI_KEY")
+
+def fetch_prices(ticker: str, start: str):
+    """
+    Télécharge les prix via l'API RapidAPI Yahoo Finance Timeseries.
+    Convertit le résultat en DataFrame équivalent à yfinance.
+    """
+
+    if RAPIDAPI_KEY is None:
+        return None, {"error": "RAPIDAPI_KEY non configuré dans Render"}
+
+    url = "https://apidojo-yahoo-finance-v1.p.rapidapi.com/stock/v2/get-timeseries"
+
+    querystring = {"symbol": ticker, "region": "US"}
+
+    headers = {
+        "x-rapidapi-key": RAPIDAPI_KEY,
+        "x-rapidapi-host": "apidojo-yahoo-finance-v1.p.rapidapi.com"
+    }
+
+    try:
+        response = requests.get(url, headers=headers, params=querystring, timeout=10)
+
+        if response.status_code != 200:
+            return None, {"error": f"Erreur API RapidAPI: {response.status_code}"}
+
+        data = response.json()
+
+        # L'API renvoie un gros JSON avec des series
+        prices = data.get("timeseries", [])
+
+        if not prices:
+            return None, {"error": f"Aucune donnée disponible pour {ticker}"}
+
+        # On récupère la série 'close'
+        closes = next(
+            (item.get("values") for item in prices if item.get("type") == "close"),
+            None
+        )
+
+        if closes is None:
+            return None, {"error": f"Impossible de trouver les prix pour {ticker}"}
+
+        # Convertir en DataFrame
+        df = pd.DataFrame(closes)
+        df["date"] = pd.to_datetime(df["datetime"], unit='s')
+        df = df.set_index("date")
+        df = df.rename(columns={"close": "Close"})
+
+        return df, None
+
+    except Exception as e:
+        return None, {"error": f"Erreur RapidAPI : {str(e)}"}
 
 
 def calcul_dca(ticker: str, montant: float, start: str):
 
-    # --- Méthode alternative : Ticker.history() (plus fiable que download() sur Render) ---
-    try:
-        t = yf.Ticker(ticker, session=session)
+    df, err = fetch_prices(ticker, start)
+    if err:
+        return err
 
-        data = t.history(
-            start=start,
-            auto_adjust=True,
-            actions=False,     # évite les colonnes inutiles
-        )
+    close_prices = df["Close"]
 
-    except Exception as e:
-        return {"error": f"Erreur Yahoo Finance : {str(e)}"}
-
-    # Vérifications
-    if data is None or data.empty:
-        return {"error": f"Ticker '{ticker}' introuvable ou bloqué par Yahoo"}
-
-    if "Close" not in data.columns:
-        return {"error": f"Aucune donnée 'Close' disponible pour {ticker}"}
-
-    close_prices = data["Close"]
-
-    # --- DCA ---
     total_investi = 0
     total_shares = 0
     historique = []
 
     for date, prix in close_prices.items():
-        if pd.isna(prix):
-            continue
-
         shares_achetees = montant / prix
         total_shares += shares_achetees
         total_investi += montant
@@ -57,13 +84,13 @@ def calcul_dca(ticker: str, montant: float, start: str):
         })
 
     valeur_finale = total_shares * close_prices.iloc[-1]
-    rendement = valeur_finale - total_investi
+    gain = valeur_finale - total_investi
 
     return {
-        "ticker": ticker.upper(),
+        "ticker": ticker,
         "investi_total": round(total_investi, 2),
         "valeur_finale": round(valeur_finale, 2),
-        "gain": round(rendement, 2),
-        "gain_pct": round((rendement / total_investi) * 100, 2),
+        "gain": round(gain, 2),
+        "gain_pct": round((gain / total_investi) * 100, 2),
         "historique": historique
     }
