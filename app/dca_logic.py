@@ -1,8 +1,8 @@
 import yfinance as yf
-from yfinance import shared              # <-- IMPORT TRÈS IMPORTANT
+from yfinance import shared
 import pandas as pd
 
-# Patch Render / Cloudflare / Yahoo blocks
+# Patch Render/Yahoo blocking
 shared._requests_args['headers'] = {
     'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)',
     'Accept': 'application/json,text/plain,*/*'
@@ -10,19 +10,20 @@ shared._requests_args['headers'] = {
 
 def calcul_dca(ticker: str, montant: float, start: str):
 
-    # Téléchargement des données (version compatible Render)
-    data = yf.download(
-        ticker,
-        start=start,
-        progress=False,
-        threads=False,
-        auto_adjust=True
-    )
+    # Méthode alternative : ticker.history() (bien plus fiable que download() sur Render)
+    try:
+        ticker_obj = yf.Ticker(ticker)
+        data = ticker_obj.history(
+            start=start,
+            auto_adjust=True,
+            actions=False
+        )
+    except Exception as e:
+        return {"error": f"Erreur Yahoo Finance : {str(e)}"}
 
-    if data.empty:
+    if data is None or data.empty:
         return {"error": f"Ticker '{ticker}' introuvable ou bloqué par Yahoo"}
 
-    # On utilise la colonne "Close"
     close_prices = data["Close"]
 
     total_investi = 0
