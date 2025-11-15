@@ -3,94 +3,90 @@ import requests
 import pandas as pd
 from datetime import datetime
 
-# ⚠️ On lit la clé dans les variables d'environnement (Render)
-RAPIDAPI_KEY = os.getenv("RAPIDAPI_KEY")
+
+# Lecture de la clé TwelveData dans Render
+TWELVEDATA_KEY = os.getenv("TWELVEDATA_KEY")
 
 
 def fetch_data(ticker: str):
     """
-    Récupère l'historique mensuel du ticker via Yahoo Finance 160 (RapidAPI).
-    Retourne un DataFrame indexé par date avec une colonne 'close'.
+    Récupère l'historique mensuel du ticker via TwelveData.
+    Retourne un DataFrame indexé par date avec 'close'.
     """
 
-    if not RAPIDAPI_KEY:
-        # Erreur côté serveur : clé manquante
-        return None, {"message": "RAPIDAPI_KEY manquante sur le serveur."}
+    if not TWELVEDATA_KEY:
+        return None, {"message": "TWELVEDATA_KEY manquante dans Render."}
 
-    url = "https://yahoo-finance160.p.rapidapi.com/history"
+    url = "https://api.twelvedata.com/time_series"
 
     params = {
         "symbol": ticker,
-        "interval": "1mo",
-        "range": "max"
-    }
-
-    headers = {
-        "x-rapidapi-key": RAPIDAPI_KEY,
-        # ⚠️ Vérifie bien que c'est EXACTEMENT ce qui est indiqué dans RapidAPI > Code Snippet
-        "x-rapidapi-host": "yahoo-finance160.p.rapidapi.com"
+        "interval": "1month",
+        "start_date": "1990-01-01",
+        "apikey": TWELVEDATA_KEY
     }
 
     try:
-        r = requests.get(url, headers=headers, params=params, timeout=15)
+        r = requests.get(url, params=params, timeout=15)
     except Exception as e:
-        return None, {"message": f"Erreur réseau RapidAPI : {e}"}
-
-    # Si statut HTTP pas 200 → on remonte l'erreur brute
-    if r.status_code != 200:
-        return None, {
-            "message": f"HTTP {r.status_code} depuis RapidAPI",
-            "details": r.text[:300]
-        }
+        return None, {"message": f"Erreur réseau TwelveData : {e}"}
 
     try:
         data = r.json()
-    except Exception as e:
-        return None, {"message": f"Réponse non-JSON de RapidAPI : {e}", "raw": r.text[:300]}
+    except:
+        return None, {"message": "Réponse TwelveData non valide.", "raw": r.text[:300]}
 
-    # ✅ Cas normal : la clé 'prices' est présente
-    if "prices" in data:
-        df = pd.DataFrame(data["prices"])
-        if "date" not in df or "close" not in df:
-            return None, {"message": "Format inattendu : colonnes 'date' ou 'close' manquantes.", "raw": data}
+    # Erreur API TwelveData
+    if "status" in data and data["status"] == "error":
+        return None, {"message": f"Erreur TwelveData : {data.get('message')}"}
 
-        df = df[["date", "close"]].dropna()
-        df["date"] = pd.to_datetime(df["date"], unit="s")
-        df = df.set_index("date").sort_index()
-        return df, None
+    # Données introuvables
+    if "values" not in data:
+        return None, {
+            "message": "Aucune donnée 'values' dans la réponse TwelveData.",
+            "raw": data
+        }
 
-    # ❌ Cas erreur : on renvoie ce que l’API a répondu
-    return None, {
-        "message": "Pas de clé 'prices' dans la réponse RapidAPI.",
-        "raw": data
-    }
+    # Construction DataFrame
+    df = pd.DataFrame(data["values"])
+
+    if "datetime" not in df or "close" not in df:
+        return None, {"message": "Format inattendu TwelveData.", "raw": data}
+
+    df["datetime"] = pd.to_datetime(df["datetime"])
+    df["close"] = pd.to_numeric(df["close"], errors="coerce")
+    df = df.dropna(subset=["close"])
+
+    df = df.set_index("datetime").sort_index()
+
+    return df, None
+
 
 
 def calcul_dca(ticker: str, montant: float, start: str):
     """
-    Calcule un DCA mensuel à partir des données RapidAPI.
-    - ticker : symbole boursier (AAPL, MSFT, etc.)
-    - montant : montant investi chaque mois
-    - start : date de départ, ex '2010-01-01'
+    Calcule un DCA mensuel à partir des données TwelveData.
     """
 
     df, err = fetch_data(ticker)
 
+    # Erreur lors de la récupération des données
     if err is not None:
-        # On renvoie l’erreur telle quelle à FastAPI
         return {"error": err["message"], "details": err.get("raw")}
 
-    # Filtrage sur la date de départ
+    # Vérification date de départ
     try:
         start_dt = datetime.strptime(start, "%Y-%m-%d")
     except ValueError:
-        return {"error": f"Format de date invalide pour start : {start}. Utilise AAAA-MM-JJ."}
+        return {"error": "Format start incorrect. Exemple : 2010-01-01"}
 
+    # Filtrer les données
     df = df[df.index >= start_dt]
 
     if df.empty:
-        return {"error": f"Aucune donnée trouvée pour {ticker} à partir de {start}."}
+        return {"error": f"Aucune donnée pour {ticker} à partir de {start}"}
 
+    # Calcul du DCA
     total_shares = 0.0
     total_investi = 0.0
     historique = []
@@ -114,7 +110,7 @@ def calcul_dca(ticker: str, montant: float, start: str):
         })
 
     if not historique:
-        return {"error": f"Aucune donnée exploitable (prix <= 0) pour {ticker}."}
+        return {"error": "Aucune donnée exploitable après filtrage."}
 
     valeur_finale = historique[-1]["valeur_total"]
     gain = round(valeur_finale - total_investi, 2)
@@ -122,8 +118,8 @@ def calcul_dca(ticker: str, montant: float, start: str):
     return {
         "ticker": ticker,
         "investi_total": round(total_investi, 2),
-        "valeur_finale": valeur_finale,
+        "valeur_finale": round(valeur_finale, 2),
         "gain": gain,
-        "gain_pct": round((gain / total_investi) * 100, 2) if total_investi > 0 else 0,
+        "gain_pct": round((gain / total_investi) * 100, 2),
         "historique": historique
     }
