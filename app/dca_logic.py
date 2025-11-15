@@ -1,8 +1,22 @@
+import os
 import requests
 import pandas as pd
 from datetime import datetime
 
-def fetch_data(ticker, api_key):
+# ⚠️ On lit la clé dans les variables d'environnement (Render)
+RAPIDAPI_KEY = os.getenv("RAPIDAPI_KEY")
+
+
+def fetch_data(ticker: str):
+    """
+    Récupère l'historique mensuel du ticker via Yahoo Finance 160 (RapidAPI).
+    Retourne un DataFrame indexé par date avec une colonne 'close'.
+    """
+
+    if not RAPIDAPI_KEY:
+        # Erreur côté serveur : clé manquante
+        return None, {"message": "RAPIDAPI_KEY manquante sur le serveur."}
+
     url = "https://yahoo-finance160.p.rapidapi.com/history"
 
     params = {
@@ -12,34 +26,73 @@ def fetch_data(ticker, api_key):
     }
 
     headers = {
-        "x-rapidapi-key": api_key,
+        "x-rapidapi-key": RAPIDAPI_KEY,
+        # ⚠️ Vérifie bien que c'est EXACTEMENT ce qui est indiqué dans RapidAPI > Code Snippet
         "x-rapidapi-host": "yahoo-finance160.p.rapidapi.com"
     }
 
-    r = requests.get(url, headers=headers, params=params)
-    data = r.json()
+    try:
+        r = requests.get(url, headers=headers, params=params, timeout=15)
+    except Exception as e:
+        return None, {"message": f"Erreur réseau RapidAPI : {e}"}
 
-    if "prices" not in data:
-        return None
+    # Si statut HTTP pas 200 → on remonte l'erreur brute
+    if r.status_code != 200:
+        return None, {
+            "message": f"HTTP {r.status_code} depuis RapidAPI",
+            "details": r.text[:300]
+        }
 
-    df = pd.DataFrame(data["prices"])
-    df = df[["date", "close"]].dropna()
+    try:
+        data = r.json()
+    except Exception as e:
+        return None, {"message": f"Réponse non-JSON de RapidAPI : {e}", "raw": r.text[:300]}
 
-    df["date"] = pd.to_datetime(df["date"], unit="s")
-    df = df.set_index("date").sort_index()
+    # ✅ Cas normal : la clé 'prices' est présente
+    if "prices" in data:
+        df = pd.DataFrame(data["prices"])
+        if "date" not in df or "close" not in df:
+            return None, {"message": "Format inattendu : colonnes 'date' ou 'close' manquantes.", "raw": data}
 
-    return df
+        df = df[["date", "close"]].dropna()
+        df["date"] = pd.to_datetime(df["date"], unit="s")
+        df = df.set_index("date").sort_index()
+        return df, None
+
+    # ❌ Cas erreur : on renvoie ce que l’API a répondu
+    return None, {
+        "message": "Pas de clé 'prices' dans la réponse RapidAPI.",
+        "raw": data
+    }
 
 
-def calcul_dca(ticker: str, montant: float, start: str, api_key: str):
-    df = fetch_data(ticker, api_key)
-    if df is None:
-        return {"error": "Données introuvables pour ce ticker."}
+def calcul_dca(ticker: str, montant: float, start: str):
+    """
+    Calcule un DCA mensuel à partir des données RapidAPI.
+    - ticker : symbole boursier (AAPL, MSFT, etc.)
+    - montant : montant investi chaque mois
+    - start : date de départ, ex '2010-01-01'
+    """
 
-    df = df[df.index >= start]
+    df, err = fetch_data(ticker)
 
-    total_shares = 0
-    total_investi = 0
+    if err is not None:
+        # On renvoie l’erreur telle quelle à FastAPI
+        return {"error": err["message"], "details": err.get("raw")}
+
+    # Filtrage sur la date de départ
+    try:
+        start_dt = datetime.strptime(start, "%Y-%m-%d")
+    except ValueError:
+        return {"error": f"Format de date invalide pour start : {start}. Utilise AAAA-MM-JJ."}
+
+    df = df[df.index >= start_dt]
+
+    if df.empty:
+        return {"error": f"Aucune donnée trouvée pour {ticker} à partir de {start}."}
+
+    total_shares = 0.0
+    total_investi = 0.0
     historique = []
 
     for date, row in df.iterrows():
@@ -60,13 +113,17 @@ def calcul_dca(ticker: str, montant: float, start: str, api_key: str):
             "valeur_total": valeur_portefeuille
         })
 
+    if not historique:
+        return {"error": f"Aucune donnée exploitable (prix <= 0) pour {ticker}."}
+
     valeur_finale = historique[-1]["valeur_total"]
-    gain = valeur_finale - total_investi
+    gain = round(valeur_finale - total_investi, 2)
 
     return {
         "ticker": ticker,
-        "investi_total": total_investi,
+        "investi_total": round(total_investi, 2),
         "valeur_finale": valeur_finale,
         "gain": gain,
+        "gain_pct": round((gain / total_investi) * 100, 2) if total_investi > 0 else 0,
         "historique": historique
     }

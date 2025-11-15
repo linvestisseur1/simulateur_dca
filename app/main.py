@@ -1,31 +1,30 @@
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.staticfiles import StaticFiles
-from fastapi.responses import FileResponse
 from app.dca_logic import calcul_dca
-import os
 
-app = FastAPI(title="Simulateur DCA")
+app = FastAPI(
+    title="Simulateur DCA API",
+    description="API simple et rapide pour simuler du Dollar-Cost Averaging.",
+    version="1.0.0"
+)
 
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
     allow_methods=["*"],
-    allow_headers=["*"]
+    allow_headers=["*"],
 )
 
-app.mount("/static", StaticFiles(directory="static"), name="static")
-
 @app.get("/")
-def serve_front():
-    return FileResponse("static/index.html")
-
+def home():
+    return {"status": "ok", "message": "Simulateur DCA prêt"}
 
 @app.get("/dca")
 def api_dca(ticker: str, montant: float = 100, start: str = "2000-01-01"):
+    result = calcul_dca(ticker, montant, start)
 
-    api_key = os.getenv("RAPIDAPI_KEY")
-
-    result = calcul_dca(ticker, montant, start, api_key)
+    if "error" in result:
+        # On remonte l’erreur côté client (ton front affichera le message)
+        raise HTTPException(status_code=400, detail=result)
 
     return result
