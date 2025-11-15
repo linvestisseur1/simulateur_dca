@@ -2,36 +2,139 @@
 <html lang="fr">
 <head>
     <meta charset="UTF-8">
-    <title>Simulateur DCA</title>
-    <link rel="stylesheet" href="styles.css">
+    <title>Simulateur DCA – Investissement Automatisé</title>
+
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            background: #f5f7fa;
+            margin: 40px;
+        }
+
+        h1 {
+            font-size: 32px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .gain-box {
+            font-size: 22px;
+            margin-top: 15px;
+            font-weight: bold;
+        }
+
+        .green { color: #0c9e4d; }
+        .red { color: #c62828; }
+
+        #chart-container {
+            margin-top: 40px;
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0px 2px 10px rgba(0,0,0,0.15);
+        }
+    </style>
 </head>
 
 <body>
 
 <h1>📈 Simulateur DCA – Investissement Automatisé</h1>
 
-<div class="form-container">
-    <select id="ticker">
-        <option value="AAPL">Apple (AAPL)</option>
-        <option value="MSFT">Microsoft (MSFT)</option>
-        <option value="NVDA">Nvidia (NVDA)</option>
-        <option value="META">Meta (META)</option>
-        <option value="TSLA">Tesla (TSLA)</option>
-    </select>
+<select id="ticker">
+    <option value="AAPL">Apple (AAPL)</option>
+    <option value="MSFT">Microsoft (MSFT)</option>
+    <option value="NVDA">Nvidia (NVDA)</option>
+    <option value="AMZN">Amazon (AMZN)</option>
+</select>
 
-    <input id="montant" type="number" value="100" />
-    <input id="start" type="date" value="2010-01-01" />
+<input type="number" id="montant" value="100" min="10">
+<input type="date" id="start" value="2010-01-01">
 
-    <button onclick="simulate()">Simuler</button>
+<button onclick="simuler()">Simuler</button>
+
+<div id="gain" class="gain-box">Gain : -- €</div>
+
+<div id="chart-container">
+    <canvas id="chart"></canvas>
 </div>
 
-<div class="result">
-    <div id="gainBox" class="gainBox">Gain : -- €</div>
-</div>
+<script>
+let chart = null;
 
-<canvas id="dcaChart"></canvas>
+async function simuler() {
+    const ticker = document.getElementById("ticker").value;
+    const montant = document.getElementById("montant").value;
+    const start = document.getElementById("start").value;
 
-<script src="script.js"></script>
+    const url =
+        `/dca?ticker=${ticker}&montant=${montant}&start=${start}`;
+
+    const r = await fetch(url);
+    const data = await r.json();
+
+    if (data.error) {
+        alert("Erreur API : " + data.error);
+        return;
+    }
+
+    // extraction du JSON
+    const historique = data.historique;
+
+    const labels = historique.map(h => h.date);
+    const investi = historique.map(h => h.investi_total);
+    const valeur = historique.map(h => h.valeur_total);
+
+    // gain coloré
+    const gainBox = document.getElementById("gain");
+    const gain = data.valeur_finale - data.investi_total;
+
+    gainBox.innerHTML = `Gain : ${gain.toLocaleString()} €`;
+
+    if (gain >= 0) gainBox.className = "gain-box green";
+    else gainBox.className = "gain-box red";
+
+    // Chart.js
+    const ctx = document.getElementById("chart").getContext("2d");
+
+    if (chart !== null) chart.destroy();
+
+    chart = new Chart(ctx, {
+        type: 'line',
+        data: {
+            labels: labels,
+            datasets: [
+                {
+                    label: "Investi (€)",
+                    data: investi,
+                    borderColor: "#0d47a1",
+                    backgroundColor: "rgba(33,150,243,0.3)",
+                    borderWidth: 2,
+                    fill: true
+                },
+                {
+                    label: "Valeur portefeuille (€)",
+                    data: valeur,
+                    borderColor: "#2e7d32",
+                    backgroundColor: "rgba(76,175,80,0.3)",
+                    borderWidth: 2,
+                    fill: true
+                }
+            ]
+        },
+        options: {
+            responsive: true,
+            scales: {
+                y: {
+                    beginAtZero: false
+                }
+            }
+        }
+    });
+}
+</script>
+
 </body>
 </html>
