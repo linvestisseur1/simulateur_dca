@@ -1,25 +1,31 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
+from fastapi.responses import FileResponse
 from app.dca_logic import calcul_dca
+import os
 
-app = FastAPI(
-    title="Simulateur DCA API",
-    description="API simple et rapide pour simuler du Dollar-Cost Averaging.",
-    version="1.0.0"
-)
+app = FastAPI(title="Simulateur DCA")
 
-# CORS (permettra un frontend plus tard)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
-    allow_headers=["*"],
-    allow_methods=["*"]
+    allow_methods=["*"],
+    allow_headers=["*"]
 )
 
+app.mount("/static", StaticFiles(directory="static"), name="static")
+
 @app.get("/")
-def home():
-    return {"status": "ok", "message": "Simulateur DCA prêt"}
+def serve_front():
+    return FileResponse("static/index.html")
+
 
 @app.get("/dca")
 def api_dca(ticker: str, montant: float = 100, start: str = "2000-01-01"):
-    return calcul_dca(ticker, montant, start)
+
+    api_key = os.getenv("RAPIDAPI_KEY")
+
+    result = calcul_dca(ticker, montant, start, api_key)
+
+    return result

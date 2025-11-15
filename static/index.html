@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <title>Simulateur DCA</title>
+    <link rel="stylesheet" href="styles.css">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+
+<body>
+
+<h1>📈 Simulateur DCA – Investissement Automatisé</h1>
+
+<div class="form-container">
+    <select id="ticker">
+        <option value="AAPL">Apple (AAPL)</option>
+        <option value="MSFT">Microsoft (MSFT)</option>
+        <option value="NVDA">Nvidia (NVDA)</option>
+        <option value="META">Meta (META)</option>
+        <option value="TSLA">Tesla (TSLA)</option>
+    </select>
+
+    <input id="montant" type="number" value="100" />
+    <input id="start" type="date" value="2010-01-01" />
+
+    <button onclick="simulate()">Simuler</button>
+</div>
+
+<div class="result">
+    <div id="gainBox" class="gainBox">Gain : -- €</div>
+</div>
+
+<canvas id="dcaChart"></canvas>
+
+<script src="script.js"></script>
+</body>
+</html>

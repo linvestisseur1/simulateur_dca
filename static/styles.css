@@ -1,0 +1,59 @@
+body {
+    background: #0d0f14;
+    color: white;
+    font-family: Arial;
+    text-align: center;
+    padding: 30px;
+}
+
+h1 {
+    font-size: 28px;
+    margin-bottom: 25px;
+}
+
+.form-container {
+    display: flex;
+    justify-content: center;
+    gap: 15px;
+    margin-bottom: 25px;
+}
+
+input, select {
+    padding: 10px;
+    font-size: 16px;
+    border-radius: 6px;
+}
+
+button {
+    padding: 10px 20px;
+    background: #4d7cff;
+    color: white;
+    border-radius: 6px;
+    border: none;
+    cursor: pointer;
+}
+
+button:hover {
+    background: #6d94ff;
+}
+
+.gainBox {
+    font-size: 22px;
+    font-weight: bold;
+    padding: 15px;
+    border-radius: 10px;
+    margin-bottom: 20px;
+    display: inline-block;
+}
+
+.green {
+    background: rgba(0, 255, 80, 0.2);
+    border: 2px solid #00ff80;
+    color: #00ff80;
+}
+
+.red {
+    background: rgba(255, 70, 70, 0.2);
+    border: 2px solid #ff4646;
+    color: #ff4646;
+}
