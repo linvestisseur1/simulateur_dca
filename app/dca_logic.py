@@ -1,96 +1,92 @@
-import os
 import requests
 import pandas as pd
+from datetime import datetime
+import os
 
-
-RAPIDAPI_KEY = os.getenv("RAPIDAPI_KEY")
+RAPID_KEY = os.getenv("RAPIDAPI_KEY")
 
 def fetch_prices(ticker: str, start: str):
-    """
-    Télécharge les prix via l'API RapidAPI Yahoo Finance Timeseries.
-    Convertit le résultat en DataFrame équivalent à yfinance.
-    """
+    """Appelle RapidAPI pour récupérer l'historique."""
+    
+    url = "https://yahoo-finance15.p.rapidapi.com/api/yahoo/hi/history"
 
-    if RAPIDAPI_KEY is None:
-        return None, {"error": "RAPIDAPI_KEY non configuré dans Render"}
-
-    url = "https://apidojo-yahoo-finance-v1.p.rapidapi.com/stock/v2/get-timeseries"
-
-    querystring = {"symbol": ticker, "region": "US"}
+    query = {
+        "symbol": ticker,
+        "interval": "1d"
+    }
 
     headers = {
-        "x-rapidapi-key": RAPIDAPI_KEY,
-        "x-rapidapi-host": "apidojo-yahoo-finance-v1.p.rapidapi.com"
+        "x-rapidapi-key": RAPID_KEY,
+        "x-rapidapi-host": "yahoo-finance15.p.rapidapi.com"
     }
 
     try:
-        response = requests.get(url, headers=headers, params=querystring, timeout=10)
-
-        if response.status_code != 200:
-            return None, {"error": f"Erreur API RapidAPI: {response.status_code}"}
-
-        data = response.json()
-
-        # L'API renvoie un gros JSON avec des series
-        prices = data.get("timeseries", [])
-
-        if not prices:
-            return None, {"error": f"Aucune donnée disponible pour {ticker}"}
-
-        # On récupère la série 'close'
-        closes = next(
-            (item.get("values") for item in prices if item.get("type") == "close"),
-            None
-        )
-
-        if closes is None:
-            return None, {"error": f"Impossible de trouver les prix pour {ticker}"}
-
-        # Convertir en DataFrame
-        df = pd.DataFrame(closes)
-        df["date"] = pd.to_datetime(df["datetime"], unit='s')
-        df = df.set_index("date")
-        df = df.rename(columns={"close": "Close"})
-
-        return df, None
-
+        resp = requests.get(url, headers=headers, params=query, timeout=10)
     except Exception as e:
-        return None, {"error": f"Erreur RapidAPI : {str(e)}"}
+        return {"error": f"Erreur réseau RapidAPI : {str(e)}"}
+
+    # 🔍 Si le serveur renvoie du texte, on l'affiche
+    try:
+        data = resp.json()
+    except Exception:
+        return {"error": f"Réponse non-JSON de RapidAPI : {resp.text}"}
+
+    # 🔍 Vérifier la structure
+    if not isinstance(data, dict):
+        return {"error": f"RapidAPI a renvoyé quelque chose d'inattendu : {data}"}
+
+    if "items" not in data:
+        return {"error": f"Pas de données 'items' dans RapidAPI : {data}"}
+
+    # Convertir en DataFrame
+    df = pd.DataFrame(data["items"])
+    df["date"] = pd.to_datetime(df["date"])
+    df = df[df["date"] >= pd.to_datetime(start)]
+    df = df.sort_values("date")
+
+    if df.empty:
+        return {"error": "Aucune donnée historique retournée"}
+
+    return df
 
 
 def calcul_dca(ticker: str, montant: float, start: str):
 
-    df, err = fetch_prices(ticker, start)
-    if err:
-        return err
+    prices = fetch_prices(ticker, start)
 
-    close_prices = df["Close"]
+    if isinstance(prices, dict) and "error" in prices:
+        return prices  # renvoie l'erreur proprement
 
-    total_investi = 0
     total_shares = 0
+    total_investi = 0
     historique = []
 
-    for date, prix in close_prices.items():
-        shares_achetees = montant / prix
-        total_shares += shares_achetees
+    for _, row in prices.iterrows():
+        price = row["close"]
+        date = row["date"].date()
+
+        if pd.isna(price): 
+            continue
+
+        shares = montant / price
+        total_shares += shares
         total_investi += montant
 
         historique.append({
-            "date": str(date.date()),
-            "cours": round(prix, 2),
-            "shares": float(shares_achetees),
+            "date": str(date),
+            "cours": round(price, 2),
+            "shares": float(shares),
             "investi_total": round(total_investi, 2),
-            "valeur_total": round(total_shares * prix, 2)
+            "valeur_total": round(total_shares * price, 2)
         })
 
-    valeur_finale = total_shares * close_prices.iloc[-1]
-    gain = valeur_finale - total_investi
+    final_valeur = total_shares * prices.iloc[-1]["close"]
 
     return {
         "ticker": ticker,
         "investi_total": round(total_investi, 2),
-        "valeur_finale": round(valeur_finale, 2),
-        "gain": round(gain, 2),
-        "gain_pct": round((gain / total_investi) * 100, 2),
+        "valeur_finale": round(final_valeur, 2),
+        "gain": round(final_valeur - total_investi, 2),
+        "gain_pct": round(((final_valeur - total_investi) / total_investi) * 100, 2),
         "historique": historique
     }
