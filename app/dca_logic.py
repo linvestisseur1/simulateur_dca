@@ -1,125 +1,132 @@
+# app/dca_logic.py
 import os
 import requests
 import pandas as pd
 from datetime import datetime
+from typing import Optional, Tuple, Dict, Any
 
-
-# Lecture de la clé TwelveData dans Render
 TWELVEDATA_KEY = os.getenv("TWELVEDATA_KEY")
+BASE_URL = "https://api.twelvedata.com/time_series"
 
 
-def fetch_data(ticker: str):
+def fetch_monthly_prices(symbol: str) -> Tuple[Optional[pd.DataFrame], Optional[Dict[str, Any]]]:
     """
-    Récupère l'historique mensuel du ticker via TwelveData.
-    Retourne un DataFrame indexé par date avec 'close'.
+    Récupère les prix mensuels via TwelveData pour un symbole donné.
+    Retourne (df, error). Si error != None, df est None.
+    df contient les colonnes: ['date', 'close'] triées par date ascendante.
     """
-
     if not TWELVEDATA_KEY:
-        return None, {"message": "TWELVEDATA_KEY manquante dans Render."}
-
-    url = "https://api.twelvedata.com/time_series"
+        return None, {"message": "TWELVEDATA_KEY manquante sur le serveur."}
 
     params = {
-        "symbol": ticker,
+        "symbol": symbol,
         "interval": "1month",
-        "start_date": "1990-01-01",
-        "apikey": TWELVEDATA_KEY
+        "outputsize": 5000,  # max sensible
+        "apikey": TWELVEDATA_KEY,
+        "order": "asc",
+        "format": "JSON",
     }
 
     try:
-        r = requests.get(url, params=params, timeout=15)
-    except Exception as e:
-        return None, {"message": f"Erreur réseau TwelveData : {e}"}
+        resp = requests.get(BASE_URL, params=params, timeout=10)
+        resp.raise_for_status()
+    except requests.RequestException as e:
+        return None, {"message": f"Erreur de connexion à TwelveData : {e}"}
 
-    try:
-        data = r.json()
-    except:
-        return None, {"message": "Réponse TwelveData non valide.", "raw": r.text[:300]}
+    data = resp.json()
 
-    # Erreur API TwelveData
-    if "status" in data and data["status"] == "error":
-        return None, {"message": f"Erreur TwelveData : {data.get('message')}"}
+    # Gestion des erreurs TwelveData
+    if isinstance(data, dict) and data.get("status") == "error":
+        return None, {"message": data.get("message", "Erreur renvoyée par TwelveData.")}
 
-    # Données introuvables
-    if "values" not in data:
-        return None, {
-            "message": "Aucune donnée 'values' dans la réponse TwelveData.",
-            "raw": data
-        }
+    values = data.get("values")
+    if not values:
+        return None, {"message": "Aucune donnée renvoyée par TwelveData pour ce symbole."}
 
-    # Construction DataFrame
-    df = pd.DataFrame(data["values"])
+    df = pd.DataFrame(values)
 
-    if "datetime" not in df or "close" not in df:
-        return None, {"message": "Format inattendu TwelveData.", "raw": data}
+    if "datetime" not in df.columns or "close" not in df.columns:
+        return None, {"message": "Format de données TwelveData inattendu (datetime/close manquant)."}
 
-    df["datetime"] = pd.to_datetime(df["datetime"])
+    # Conversion types + tri
+    df["date"] = pd.to_datetime(df["datetime"]).dt.date
     df["close"] = pd.to_numeric(df["close"], errors="coerce")
-    df = df.dropna(subset=["close"])
-
-    df = df.set_index("datetime").sort_index()
-
-    return df, None
-
-
-
-def calcul_dca(ticker: str, montant: float, start: str):
-    """
-    Calcule un DCA mensuel à partir des données TwelveData.
-    """
-
-    df, err = fetch_data(ticker)
-
-    # Erreur lors de la récupération des données
-    if err is not None:
-        return {"error": err["message"], "details": err.get("raw")}
-
-    # Vérification date de départ
-    try:
-        start_dt = datetime.strptime(start, "%Y-%m-%d")
-    except ValueError:
-        return {"error": "Format start incorrect. Exemple : 2010-01-01"}
-
-    # Filtrer les données
-    df = df[df.index >= start_dt]
+    df = df.dropna(subset=["close"]).sort_values("date").reset_index(drop=True)
 
     if df.empty:
-        return {"error": f"Aucune donnée pour {ticker} à partir de {start}"}
+        return None, {"message": "Données vides après nettoyage."}
 
-    # Calcul du DCA
+    return df[["date", "close"]], None
+
+
+def calcul_dca(symbol: str, amount: float = 100.0, start: Optional[str] = None):
+    """
+    Calcule un DCA mensuel sur le symbole donné :
+    - amount : montant investi chaque mois
+    - start : date de début au format 'YYYY-MM-DD' (optionnel)
+
+    Retourne (result, error) où result est un dict prêt à être renvoyé en JSON.
+    """
+    df, error = fetch_monthly_prices(symbol)
+    if error:
+        return None, error
+
+    # Filtre sur la date de début si fournie
+    if start:
+        try:
+            start_date = datetime.strptime(start, "%Y-%m-%d").date()
+        except ValueError:
+            return None, {"message": "Format de date invalide. Utilise YYYY-MM-DD."}
+
+        df = df[df["date"] >= start_date].reset_index(drop=True)
+
+    if df.empty:
+        return None, {"message": "Aucune donnée disponible sur la période demandée."}
+
+    # Boucle DCA
     total_shares = 0.0
-    total_investi = 0.0
-    historique = []
+    total_invested = 0.0
+    rows = []
 
-    for date, row in df.iterrows():
-        prix = float(row["close"])
-        if prix <= 0:
+    for _, row in df.iterrows():
+        price = float(row["close"])
+        if price <= 0:
+            # on saute les valeurs bizarres
             continue
 
-        shares = montant / prix
-        total_shares += shares
-        total_investi += montant
-        valeur_portefeuille = round(total_shares * prix, 2)
+        bought = amount / price
+        total_shares += bought
+        total_invested += amount
+        portfolio_value = total_shares * price
+        gain = portfolio_value - total_invested
+        gain_pct = (gain / total_invested) * 100 if total_invested > 0 else 0.0
 
-        historique.append({
-            "date": date.strftime("%Y-%m-%d"),
-            "cours": round(prix, 2),
-            "shares": round(total_shares, 4),
-            "investi_total": round(total_investi, 2),
-            "valeur_total": valeur_portefeuille
+        rows.append({
+            "date": row["date"].isoformat(),
+            "price": round(price, 4),
+            "shares": round(total_shares, 6),
+            "invested": round(total_invested, 2),
+            "value": round(portfolio_value, 2),
+            "gain": round(gain, 2),
+            "gain_pct": round(gain_pct, 2),
         })
 
-    if not historique:
-        return {"error": "Aucune donnée exploitable après filtrage."}
+    if not rows:
+        return None, {"message": "Impossible de calculer un DCA sur ces données."}
 
-    valeur_finale = historique[-1]["valeur_total"]
-    gain = round(valeur_finale - total_investi, 2)
+    last = rows[-1]
 
-    return {
-        "ticker": ticker,
-        "investi_total": round(total_investi, 2),
-        "valeur_finale": round(valeur_finale, 2),
-        "gain": gain,
-        "gain_pct": round((gain / total_investi) * 100, 2),
-        "historique": historique
+    result = {
+        "symbol": symbol.upper(),
+        "monthly_invest": float(amount),
+        "start_date": rows[0]["date"],
+        "end_date": rows[-1]["date"],
+        "n_periods": len(rows),
+        "total_invested": last["invested"],
+        "current_value": last["value"],
+        "total_gain": last["gain"],
+        "total_gain_pct": last["gain_pct"],
+        "data": rows,
     }
+
+    return result, None
