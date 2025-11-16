@@ -2,7 +2,9 @@ services:
   - type: web
     name: simulateur-dca
     env: python
-    region: frankfurt
-    plan: free
-    buildCommand: "pip install -r requirements.txt"
-    startCommand: "uvicorn app.main:app --host 0.0.0.0 --port $PORT"
+    repo: https://github.com/TON_REPO/simulateur-dca
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT
+    envVars:
+      - key: TWELVEDATA_KEY
+        sync: false

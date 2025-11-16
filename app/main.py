@@ -1,40 +1,32 @@
 # app/main.py
-from typing import Optional
-
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse
+from fastapi.staticfiles import StaticFiles
 
 from .dca_logic import calcul_dca
 
-app = FastAPI(
-    title="DCA Simulator API",
-    version="1.0.0",
-)
+app = FastAPI()
 
-# CORS large pour test / front hébergé ailleurs
+# CORS large pour éviter les problèmes futurs
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],   # tu pourras restreindre quand tout sera en prod
-    allow_credentials=True,
+    allow_origins=["*"],
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
+# Servir le dossier /static
+app.mount("/static", StaticFiles(directory="static"), name="static")
 
+# Servir le front sur "/"
 @app.get("/")
-def home():
-    return {"status": "ok"}
+def serve_index():
+    return FileResponse("static/index.html")
 
 
 @app.get("/dca")
-def api_dca(
-    symbol: str,
-    amount: float = 100.0,
-    start: Optional[str] = None,
-):
-    """
-    Exemple : /dca?symbol=AAPL&amount=100&start=2000-01-01
-    """
+def api_dca(symbol: str, amount: float = 100.0, start: str | None = None):
     result, error = calcul_dca(symbol=symbol, amount=amount, start=start)
     if error:
         raise HTTPException(status_code=400, detail=error["message"])
