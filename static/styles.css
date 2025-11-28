@@ -59,93 +59,88 @@ button:hover {
 }
 
 /* ========================================================= */
-/* 📚 BLOC LIVRES & AFFILIATIONS */
+/* 📚 BLOC LIVRES & AFFILIATIONS (version renforcée) */
 /* ========================================================= */
 
-.resources-block {
-  margin-top: 40px;
+#resources-wrapper .resources-block {
+  margin: 50px auto 0;
   padding: 24px;
-  background: #0f172a;
+  background: #0f172a !important;
   border-radius: 18px;
   border: 1px solid #1e293b;
+  max-width: 1120px;
 }
 
-.resources-block h2 {
-  margin: 0 0 16px 0;
-  font-size: 1.2rem;
+#resources-wrapper .resources-block h2 {
+  margin: 0 0 18px 0;
+  font-size: 1.4rem;
   font-weight: 600;
   color: #f1f5f9;
 }
 
-.resource-list {
+#resources-wrapper .resource-list {
   display: flex;
   flex-direction: column;
-  gap: 18px;
-  margin-top: 12px;
+  gap: 20px;
+  margin-top: 18px;
 }
 
-.resource-item {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  background: #1e293b;
-  padding: 12px 14px;
-  border-radius: 12px;
-  text-decoration: none;
-  color: #e2e8f0;
-  transition: background 0.15s ease, transform 0.15s ease;
+#resources-wrapper .resource-item {
+  display: flex !important;
+  align-items: center !important;
+  gap: 14px;
+  background: #1e293b !important;
+  padding: 14px 16px !important;
+  border-radius: 12px !important;
+  text-decoration: none !important;
+  color: #e2e8f0 !important;
+  font-size: 1rem !important;
+  transition: all 0.2s ease !important;
 }
 
-.resource-item:hover {
-  background: #334155;
+#resources-wrapper .resource-item:hover {
+  background: #334155 !important;
   transform: translateY(-2px);
 }
 
-.resource-item span {
-  font-size: 0.95rem;
+#resources-wrapper .icon-book {
+  font-size: 1.5rem !important;
 }
 
-.resource-item .icon-book {
-  font-size: 1.4rem;
-}
-
-/* CTA TRADE REPUBLIC */
-.resources-tr-cta {
+#resources-wrapper .resources-tr-cta {
   margin-top: 28px;
   text-align: center;
 }
 
-.resources-tr-button {
+#resources-wrapper .resources-tr-button {
   display: inline-block;
-  background: #4f46e5;
-  color: white;
+  background: #4f46e5 !important;
+  color: white !important;
   padding: 14px 22px;
   border-radius: 999px;
-  font-size: 1rem;
+  font-size: 1.05rem;
   font-weight: 600;
-  text-decoration: none;
-  transition: background 0.2s ease, transform 0.15s ease;
+  text-decoration: none !important;
+  transition: all 0.2s ease;
 }
 
-.resources-tr-button:hover {
-  background: #6366f1;
+#resources-wrapper .resources-tr-button:hover {
+  background: #6366f1 !important;
   transform: translateY(-2px);
 }
 
-.resources-tr-note {
+#resources-wrapper .resources-tr-note {
   margin-top: 8px;
-  font-size: 0.8rem;
+  font-size: 0.85rem;
   color: #94a3b8;
 }
 
-/* MOBILE */
 @media (max-width: 600px) {
-  .resource-item span {
-    font-size: 0.9rem;
+  #resources-wrapper .resource-item {
+    font-size: 0.92rem !important;
   }
 
-  .resources-tr-button {
+  #resources-wrapper .resources-tr-button {
     width: 100%;
   }
 }
-
