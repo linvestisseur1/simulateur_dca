@@ -1,13 +1,12 @@
 # app/main.py
-import os
 import requests
-
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
 from .dca_logic import calcul_dca
+
 
 app = FastAPI()
 
@@ -16,25 +15,26 @@ app = FastAPI()
 # ----------------------------------------------------
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # tu pourras restreindre plus tard
+    allow_origins=["*"],  # À restreindre si besoin
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
 # ----------------------------------------------------
-#  SERVE STATIC FILES  (/static/…)
+#  SERVE STATIC FILES (/static)
 # ----------------------------------------------------
 app.mount("/static", StaticFiles(directory="static"), name="static")
 
 # ----------------------------------------------------
-#  SERVE FRONT PAGE  (/)
+#  SERVE FRONT PAGE (/)
 # ----------------------------------------------------
 @app.get("/")
 def serve_index():
     return FileResponse("static/index.html")
 
+
 # ----------------------------------------------------
-#  DCA ENDPOINT  (/dca)
+#  DCA ENDPOINT (/dca)
 # ----------------------------------------------------
 @app.get("/dca")
 def api_dca(symbol: str, amount: float = 100.0, start: str | None = None):
@@ -49,13 +49,13 @@ def api_dca(symbol: str, amount: float = 100.0, start: str | None = None):
 
 
 # ----------------------------------------------------
-#  AUTO-COMPLÉTION  (/search) — VERSION YAHOO FINANCE
+#  AUTO-COMPLÉTION – VERSION YAHOO FINANCE (/search)
 # ----------------------------------------------------
 @app.get("/search")
 def search_yahoo(query: str):
     """
     Auto-complétion basée sur Yahoo Finance.
-    Compatible à 100% avec yfinance.
+    Compatible avec yfinance (contrairement à TwelveData).
     """
     if len(query) < 2:
         return {"symbols": []}
@@ -64,17 +64,17 @@ def search_yahoo(query: str):
     params = {"q": query}
 
     try:
-        r = requests.get(url, params=params, timeout=5)
-        data = r.json()
+        response = requests.get(url, params=params, timeout=5)
+        data = response.json()
     except Exception:
         return {"symbols": []}
 
     results = data.get("quotes", [])
     clean_list = []
 
-    for item in results[:12]:
+    for item in results[:12]:  # Limite à 12 suggestions
         symbol = item.get("symbol")
-        name = item.get("shortname") or ""
+        name = item.get("shortname") or item.get("longname") or ""
         exchange = item.get("exchDisp") or ""
 
         if not symbol:
