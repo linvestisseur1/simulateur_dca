@@ -1,12 +1,13 @@
 # app/main.py
+import os
 import requests
+
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
 from .dca_logic import calcul_dca
-
 
 app = FastAPI()
 
@@ -21,12 +22,12 @@ app.add_middleware(
 )
 
 # ----------------------------------------------------
-#  STATIC FILES
+#  STATIC FILES (/static)
 # ----------------------------------------------------
 app.mount("/static", StaticFiles(directory="static"), name="static")
 
 # ----------------------------------------------------
-#  HOME
+#  HOME → SERVE FRONT
 # ----------------------------------------------------
 @app.get("/")
 def serve_index():
@@ -43,38 +44,33 @@ def api_dca(symbol: str, amount: float = 100.0, start: str | None = None):
     return result
 
 # ----------------------------------------------------
-#  AUTO-COMPLÉTION – VERSION YAHOO (remplace TwelveData)
+#  AUTOCOMPLETE VIA CLOUDFLARE WORKER
 # ----------------------------------------------------
+WORKER_URL = "https://dca-yahoo-proxy.nico-hameau.workers.dev"
+
 @app.get("/search")
-def search_yahoo(query: str):
-    """
-    Auto-complétion compatible yfinance via Yahoo Search API.
-    """
+def search_symbols(query: str):
     if len(query) < 2:
         return {"symbols": []}
 
-    url = "https://query2.finance.yahoo.com/v1/finance/search"
-    params = {"q": query}
-
     try:
-        r = requests.get(url, params=params, timeout=5)
+        r = requests.get(
+            WORKER_URL,
+            params={"query": query},
+            timeout=5
+        )
         data = r.json()
-    except:
+    except Exception:
         return {"symbols": []}
 
-    results = data.get("quotes", [])
-    clean_list = []
+    quotes = data.get("quotes", [])
+    results = []
 
-    for item in results[:12]:
-        symbol = item.get("symbol")
-        name = item.get("shortname") or item.get("longname") or ""
-        exchange = item.get("exchDisp") or ""
+    for q in quotes[:12]:  # limite à 12 résultats
+        results.append({
+            "symbol": q.get("symbol"),
+            "name": q.get("shortname") or q.get("longname") or "",
+            "exchange": q.get("exchDisp") or "",
+        })
 
-        if symbol:
-            clean_list.append({
-                "symbol": symbol,
-                "name": name,
-                "exchange": exchange
-            })
-
-    return {"symbols": clean_list}
+    return {"symbols": results}
