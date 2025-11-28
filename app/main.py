@@ -15,47 +15,40 @@ app = FastAPI()
 # ----------------------------------------------------
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # À restreindre si besoin
+    allow_origins=["*"],
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
 # ----------------------------------------------------
-#  SERVE STATIC FILES (/static)
+#  STATIC FILES
 # ----------------------------------------------------
 app.mount("/static", StaticFiles(directory="static"), name="static")
 
 # ----------------------------------------------------
-#  SERVE FRONT PAGE (/)
+#  HOME
 # ----------------------------------------------------
 @app.get("/")
 def serve_index():
     return FileResponse("static/index.html")
 
-
 # ----------------------------------------------------
-#  DCA ENDPOINT (/dca)
+#  DCA ENDPOINT
 # ----------------------------------------------------
 @app.get("/dca")
 def api_dca(symbol: str, amount: float = 100.0, start: str | None = None):
-    """
-    Exemple :
-    /dca?symbol=AAPL&amount=100&start=2000-01-01
-    """
     result, error = calcul_dca(symbol=symbol, amount=amount, start=start)
     if error:
         raise HTTPException(status_code=400, detail=error["message"])
     return result
 
-
 # ----------------------------------------------------
-#  AUTO-COMPLÉTION – VERSION YAHOO FINANCE (/search)
+#  AUTO-COMPLÉTION – VERSION YAHOO (remplace TwelveData)
 # ----------------------------------------------------
 @app.get("/search")
 def search_yahoo(query: str):
     """
-    Auto-complétion basée sur Yahoo Finance.
-    Compatible avec yfinance (contrairement à TwelveData).
+    Auto-complétion compatible yfinance via Yahoo Search API.
     """
     if len(query) < 2:
         return {"symbols": []}
@@ -64,26 +57,24 @@ def search_yahoo(query: str):
     params = {"q": query}
 
     try:
-        response = requests.get(url, params=params, timeout=5)
-        data = response.json()
-    except Exception:
+        r = requests.get(url, params=params, timeout=5)
+        data = r.json()
+    except:
         return {"symbols": []}
 
     results = data.get("quotes", [])
     clean_list = []
 
-    for item in results[:12]:  # Limite à 12 suggestions
+    for item in results[:12]:
         symbol = item.get("symbol")
         name = item.get("shortname") or item.get("longname") or ""
         exchange = item.get("exchDisp") or ""
 
-        if not symbol:
-            continue
-
-        clean_list.append({
-            "symbol": symbol,
-            "name": name,
-            "exchange": exchange
-        })
+        if symbol:
+            clean_list.append({
+                "symbol": symbol,
+                "name": name,
+                "exchange": exchange
+            })
 
     return {"symbols": clean_list}
