@@ -47,25 +47,21 @@ def api_dca(symbol: str, amount: float = 100.0, start: str | None = None):
         raise HTTPException(status_code=400, detail=error["message"])
     return result
 
-# ----------------------------------------------------
-#  AUTO-COMPLÉTION  (/search)
-# ----------------------------------------------------
-TWELVEDATA_KEY = os.getenv("TWELVEDATA_KEY")
 
+# ----------------------------------------------------
+#  AUTO-COMPLÉTION  (/search) — VERSION YAHOO FINANCE
+# ----------------------------------------------------
 @app.get("/search")
-def search_symbol(query: str):
+def search_yahoo(query: str):
     """
-    Auto-complétion dynamique pour les symboles financiers.
-    Utilise l'API TwelveData : symbol_search
+    Auto-complétion basée sur Yahoo Finance.
+    Compatible à 100% avec yfinance.
     """
-    if not TWELVEDATA_KEY:
-        raise HTTPException(status_code=500, detail="TWELVEDATA_KEY manquante sur le serveur.")
-
     if len(query) < 2:
         return {"symbols": []}
 
-    url = "https://api.twelvedata.com/symbol_search"
-    params = {"symbol": query, "apikey": TWELVEDATA_KEY}
+    url = "https://query2.finance.yahoo.com/v1/finance/search"
+    params = {"q": query}
 
     try:
         r = requests.get(url, params=params, timeout=5)
@@ -73,15 +69,21 @@ def search_symbol(query: str):
     except Exception:
         return {"symbols": []}
 
-    results = data.get("data", [])
-
-    # On nettoie et on limite le nombre de suggestions
+    results = data.get("quotes", [])
     clean_list = []
+
     for item in results[:12]:
+        symbol = item.get("symbol")
+        name = item.get("shortname") or ""
+        exchange = item.get("exchDisp") or ""
+
+        if not symbol:
+            continue
+
         clean_list.append({
-            "symbol": item.get("symbol"),
-            "name": item.get("instrument_name") or item.get("name") or "",
-            "exchange": item.get("exchange") or "",
+            "symbol": symbol,
+            "name": name,
+            "exchange": exchange
         })
 
     return {"symbols": clean_list}
